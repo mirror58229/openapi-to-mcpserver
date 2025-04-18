@@ -75,7 +75,7 @@ func (p *Parser) GetPaths() map[string]*openapi3.PathItem {
 	if p.doc == nil {
 		return nil
 	}
-	return p.doc.Paths
+	return p.doc.Paths.Map()
 }
 
 // GetServers returns all servers in the OpenAPI document

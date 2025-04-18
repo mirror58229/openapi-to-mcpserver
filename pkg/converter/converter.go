@@ -253,7 +253,7 @@ func (c *Converter) convertParameters(parameters openapi3.Parameters) ([]models.
 			schema := param.Schema.Value
 
 			// Set the type based on the schema type
-			arg.Type = schema.Type
+			arg.Type = schema.Type.Slice()[0]
 
 			// Handle enum values
 			if len(schema.Enum) > 0 {
@@ -261,14 +261,14 @@ func (c *Converter) convertParameters(parameters openapi3.Parameters) ([]models.
 			}
 
 			// Handle array type
-			if schema.Type == "array" && schema.Items != nil && schema.Items.Value != nil {
+			if schema.Type.Is("array") && schema.Items != nil && schema.Items.Value != nil {
 				arg.Items = map[string]interface{}{
 					"type": schema.Items.Value.Type,
 				}
 			}
 
 			// Handle object type
-			if schema.Type == "object" && len(schema.Properties) > 0 {
+			if schema.Type.Is("object") && len(schema.Properties) > 0 {
 				arg.Properties = make(map[string]interface{})
 				for propName, propRef := range schema.Properties {
 					if propRef.Value != nil {
@@ -312,7 +312,7 @@ func (c *Converter) convertRequestBody(requestBodyRef *openapi3.RequestBodyRef) 
 			strings.Contains(contentType, "application/x-www-form-urlencoded") {
 
 			// For object type, convert each property to an argument
-			if schema.Type == "object" && len(schema.Properties) > 0 {
+			if schema.Type.Is("object") && len(schema.Properties) > 0 {
 				for propName, propRef := range schema.Properties {
 					if propRef.Value == nil {
 						continue
@@ -321,7 +321,7 @@ func (c *Converter) convertRequestBody(requestBodyRef *openapi3.RequestBodyRef) 
 					arg := models.Arg{
 						Name:        propName,
 						Description: propRef.Value.Description,
-						Type:        propRef.Value.Type,
+						Type:        propRef.Value.Type.Slice()[0],
 						Required:    contains(schema.Required, propName),
 						Position:    "body", // Set position to "body" for request body parameters
 					}
@@ -332,14 +332,14 @@ func (c *Converter) convertRequestBody(requestBodyRef *openapi3.RequestBodyRef) 
 					}
 
 					// Handle array type
-					if propRef.Value.Type == "array" && propRef.Value.Items != nil && propRef.Value.Items.Value != nil {
+					if propRef.Value.Type.Is("array") && propRef.Value.Items != nil && propRef.Value.Items.Value != nil {
 						arg.Items = map[string]interface{}{
 							"type": propRef.Value.Items.Value.Type,
 						}
 					}
 
 					// Handle object type
-					if propRef.Value.Type == "object" && len(propRef.Value.Properties) > 0 {
+					if propRef.Value.Type.Is("object") && len(propRef.Value.Properties) > 0 {
 						arg.Properties = make(map[string]interface{})
 						for subPropName, subPropRef := range propRef.Value.Properties {
 							if subPropRef.Value != nil {
@@ -401,7 +401,7 @@ func (c *Converter) createResponseTemplate(operation *openapi3.Operation) (*mode
 	var successResponse *openapi3.Response
 
 	if operation.Responses != nil {
-		for code, responseRef := range operation.Responses {
+		for code, responseRef := range operation.Responses.Map() {
 			if strings.HasPrefix(code, "2") && responseRef != nil && responseRef.Value != nil {
 				successResponse = responseRef.Value
 				break
@@ -435,12 +435,12 @@ func (c *Converter) createResponseTemplate(operation *openapi3.Operation) (*mode
 		schema := mediaType.Schema.Value
 
 		// Generate field descriptions using recursive function
-		if schema.Type == "array" && schema.Items != nil && schema.Items.Value != nil {
+		if schema.Type.Is("array") && schema.Items != nil && schema.Items.Value != nil {
 			// Handle array type
 			prependBody.WriteString(fmt.Sprintf("- **items**: Array of items (Type: array)\n"))
 			// Process array items recursively
 			c.processSchemaProperties(&prependBody, schema.Items.Value, "items", 1, 10)
-		} else if schema.Type == "object" && len(schema.Properties) > 0 {
+		} else if schema.Type.Is("object") && len(schema.Properties) > 0 {
 			// Get property names and sort them alphabetically for consistent output
 			propNames := make([]string, 0, len(schema.Properties))
 			for propName := range schema.Properties {
@@ -457,8 +457,8 @@ func (c *Converter) createResponseTemplate(operation *openapi3.Operation) (*mode
 
 				// Write the property description
 				prependBody.WriteString(fmt.Sprintf("- **%s**: %s", propName, propRef.Value.Description))
-				if propRef.Value.Type != "" {
-					prependBody.WriteString(fmt.Sprintf(" (Type: %s)", propRef.Value.Type))
+				if propRef.Value.Type != nil && len(propRef.Value.Type.Slice()) > 0 && propRef.Value.Type.Slice()[0] != "" {
+					prependBody.WriteString(fmt.Sprintf(" (Type: %s)", propRef.Value.Type.Slice()[0]))
 				}
 				prependBody.WriteString("\n")
 
@@ -487,7 +487,7 @@ func (c *Converter) processSchemaProperties(prependBody *strings.Builder, schema
 	indent := strings.Repeat("  ", depth)
 
 	// Handle array type
-	if schema.Type == "array" && schema.Items != nil && schema.Items.Value != nil {
+	if schema.Type.Is("array") && schema.Items != nil && schema.Items.Value != nil {
 		arrayItemSchema := schema.Items.Value
 
 		// Include the array description if available
@@ -497,7 +497,7 @@ func (c *Converter) processSchemaProperties(prependBody *strings.Builder, schema
 		}
 
 		// If array items are objects, describe their properties
-		if arrayItemSchema.Type == "object" && len(arrayItemSchema.Properties) > 0 {
+		if arrayItemSchema.Type.Is("object") && len(arrayItemSchema.Properties) > 0 {
 			// Sort property names for consistent output
 			propNames := make([]string, 0, len(arrayItemSchema.Properties))
 			for propName := range arrayItemSchema.Properties {
@@ -515,23 +515,23 @@ func (c *Converter) processSchemaProperties(prependBody *strings.Builder, schema
 				// Write the property description
 				propPath := fmt.Sprintf("%s[].%s", path, propName)
 				prependBody.WriteString(fmt.Sprintf("%s- **%s**: %s", indent, propPath, propRef.Value.Description))
-				if propRef.Value.Type != "" {
-					prependBody.WriteString(fmt.Sprintf(" (Type: %s)", propRef.Value.Type))
+				if propRef.Value.Type != nil && len(propRef.Value.Type.Slice()) > 0 && propRef.Value.Type.Slice()[0] != ""{
+					prependBody.WriteString(fmt.Sprintf(" (Type: %s)", propRef.Value.Type.Slice()[0]))
 				}
 				prependBody.WriteString("\n")
 
 				// Process nested properties recursively
 				c.processSchemaProperties(prependBody, propRef.Value, propPath, depth+1, maxDepth)
 			}
-		} else if arrayItemSchema.Type != "" {
+		} else if arrayItemSchema.Type != nil && len(arrayItemSchema.Type.Slice()) > 0 && arrayItemSchema.Type.Slice()[0] != "" {
 			// If array items are not objects, just describe the array item type
-			prependBody.WriteString(fmt.Sprintf("%s- **%s[]**: Items of type %s\n", indent, path, arrayItemSchema.Type))
+			prependBody.WriteString(fmt.Sprintf("%s- **%s[]**: Items of type %s\n", indent, path, arrayItemSchema.Type.Slice()[0]))
 		}
 		return
 	}
 
 	// Handle object type
-	if schema.Type == "object" && len(schema.Properties) > 0 {
+	if schema.Type.Is("object") && len(schema.Properties) > 0 {
 		// Sort property names for consistent output
 		propNames := make([]string, 0, len(schema.Properties))
 		for propName := range schema.Properties {
@@ -549,8 +549,8 @@ func (c *Converter) processSchemaProperties(prependBody *strings.Builder, schema
 			// Write the property description
 			propPath := fmt.Sprintf("%s.%s", path, propName)
 			prependBody.WriteString(fmt.Sprintf("%s- **%s**: %s", indent, propPath, propRef.Value.Description))
-			if propRef.Value.Type != "" {
-				prependBody.WriteString(fmt.Sprintf(" (Type: %s)", propRef.Value.Type))
+			if propRef.Value.Type != nil && len(propRef.Value.Type.Slice()) > 0 && propRef.Value.Type.Slice()[0] != ""{
+				prependBody.WriteString(fmt.Sprintf(" (Type: %s)", propRef.Value.Type.Slice()[0]))
 			}
 			prependBody.WriteString("\n")
 
